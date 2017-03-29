@@ -1,7 +1,7 @@
 ## FUNCTION ABC_sequential: Sequential ABC methods (Beaumont et al. 2009, Drovandi
 ## & Pettitt 2011, Del Moral et al. 2011, Lenormand et al. 2012)
 ABC_sequential <- function(method, model, prior, nb_simul, summary_stat_target, prior_test = NULL, 
-    n_cluster = 1, use_seed = FALSE, verbose = FALSE, dist_weights=NULL, ...) {
+    n_cluster = 1, use_seed = FALSE, verbose = FALSE, dist_weights=NULL, cl, ccores, ...) {
     ## checking errors in the inputs
     if (missing(method)) 
         stop("'method' is missing")
@@ -9,12 +9,12 @@ ABC_sequential <- function(method, model, prior, nb_simul, summary_stat_target, 
         stop("'model' is missing")
     if (missing(prior)) 
         stop("'prior' is missing")
-    data = .wrap_constants_in_model(prior, model, use_seed)
+    data = EasyABC:::.wrap_constants_in_model(prior, model, use_seed)
     prior = data$new_prior
     model = data$new_model
-    prior = .process_prior(prior)
+    prior = EasyABC:::.process_prior(prior)
     if (!is.null(prior_test)) 
-        .check_prior_test(length(prior), prior_test)
+        EasyABC:::.check_prior_test(length(prior), prior_test)
     if (missing(nb_simul)) 
         stop("'nb_simul' is missing")
     if (missing(summary_stat_target)) 
@@ -57,7 +57,7 @@ ABC_sequential <- function(method, model, prior, nb_simul, summary_stat_target, 
             stop("For parallel implementations, you must specify the option 'use_seed=TRUE' and modify your model accordingly - see the package's vignette for more details.")
         }
         sequential = .ABC_sequential_cluster(method, model, prior, prior_test, nb_simul, 
-            summary_stat_target, n_cluster, use_seed, verbose, dist_weights=dist_weights, ...)
+            summary_stat_target, n_cluster, use_seed, verbose, dist_weights=dist_weights, cl, ccores, ...)
     }
     sequential
 } 

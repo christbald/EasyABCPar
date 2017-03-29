@@ -1,7 +1,13 @@
 ## FUNCTION ABC_rejection: brute-force ABC (Pritchard et al. 1999)
 ABC_rejection <- function(model, prior, nb_simul, prior_test = NULL, summary_stat_target = NULL, 
     tol = NULL, use_seed = FALSE, seed_count = 0, n_cluster = 1, verbose = FALSE, 
-    progress_bar = FALSE, ...) {
+    progress_bar = FALSE, cl, ccores, ...) {
+  
+    if (missing(cl))
+      stop("cl (cluster) is missing")
+    if(missing(ccores))
+      stop("ccores (vector of number of threads per cluster node) is missing")
+  
     ## checking errors in the inputs
     if (missing(model)) 
         stop("'model' is missing")
