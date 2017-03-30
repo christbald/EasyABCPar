@@ -1473,13 +1473,23 @@
     l = dim(param_previous_step)[2]
     multi = exp(-0.5 * l * log(2 * pi))/sqrt(abs(det(vmat)))
     invmat = 0.5 * solve(vmat)
-    for (i in 1:n_particle) {
-        for (k in 1:n_new_particle) {
-            temp = param_simulated[k, ] - param_previous_step[i, ]
-            tab_weight_new[k] = tab_weight_new[k] + tab_weight[i] * as.numeric(exp(-t(temp) %*% 
-                invmat %*% temp))
-        }
+    
+    # Parallelize the matrix value calculation
+    require("doMC")
+    registerDoMC(ccores[1])
+    matmult <- foreach(i = 1:n_particle) %dopar% {
+      out <- array(0, n_new_particle)
+      for (k in 1:n_new_particle){
+        temp = param_simulated[k, ] - param_previous_step[i, ]
+        out[k] <- as.numeric(exp(-t(temp) %*% 
+                         invmat %*% temp))
+      }
+      return(out)
     }
+    
+    for (i in 1:n_particle)
+        tab_weight_new = tab_weight_new + tab_weight[i] * matmult[[i]]
+    
     prior_density = .compute_weight_prior_tab(param_simulated, prior)
     tab_weight_new = prior_density/(multi * tab_weight_new)
     tab_weight_new
@@ -4170,197 +4180,84 @@
 
 ## function to sample in the prior distributions using a Latin Hypercube sample
 .ABC_rejection_lhs_cluster <- function(model, prior, prior_test, nb_simul, seed_count, 
-    n_cluster, cl, ccores) {
-    # library(lhs)
-    #cl <- makeCluster(getOption("cl.cores", n_cluster))
+    n_cluster, summary_stat_target, cl, ccores) {
+  
     l = length(prior)
     tab_simul_summarystat = matrix(nrow = nb_simul, ncol = length(summary_stat_target))
-    tab_simul_index <- 1
     tab_param = matrix(nrow = nb_simul, ncol = l)
-    tab_param_index <- 1
     list_param <- list(NULL)
-    npar = floor(nb_simul/(100 * n_cluster))
-    n_end = nb_simul - (npar * 100 * n_cluster)
-    nparam = length(prior)
-    random_tab = NULL
-    all_unif_prior = EasyABC:::.all_unif(prior)
-    if (all_unif_prior) {
-        random_tab = lhs::randomLHS(nb_simul, nparam)
-    }
     
-    if (npar > 0) {
-        for (irun in 1:npar) {
-            require("doMC")
-            registerDoMC(ccores[1])
-            params <- foreach (i = 1:(100 * n_cluster)) %dopar% {
-                #param = array(0, l)
-                #if (!all_unif_prior) {
-                EasyABC:::.sample_prior(prior, prior_test)
-            }
-            for(i in 1:length(params)){
-                #} else {
-                #  for (j in 1:l) {
-                #    param[j] = as.numeric(prior[[j]]$sampleArgs[2]) + (as.numeric(prior[[j]]$sampleArgs[3]) - 
-                #      as.numeric(prior[[j]]$sampleArgs[2])) * random_tab[((irun - 
-                #      1) * 100 * n_cluster + i), j]
-                #  }
-                #}
-                # if (use_seed) # NB: we force the value use_seed=TRUE
-                param = c((seed_count + i), params[[i]])
-                list_param[[i]] = param
-                tab_param[tab_param_index,] = param[2:(l + 1)]
-                tab_param_index <- tab_param_index + 1
-            }
-            seed_count = seed_count + (n_cluster * 100)
-            list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
-            for (i in 1:(100 * n_cluster)) {
-                tab_simul_summarystat[tab_simul_index,] = as.numeric(list_simul_summarystat[[i]])
-                tab_simul_index <- tab_simul_index + 1
-            }
-        }
+    require("doMC")
+    registerDoMC(ccores[1])
+    params <- foreach (i = 1:nb_simul) %dopar% {
+        EasyABC:::.sample_prior(prior, prior_test)
     }
-    if (n_end > 0) {
-        # stopCluster(cl) cl <- makeCluster(getOption('cl.cores', 1))
-        list_param = list(NULL)
-        require("doMC")
-        registerDoMC(ccores[1])
-        params <- foreach (i = 1:n_end) %dopar% {
-          #param = array(0, l)
-          #if (!all_unif_prior) {
-          EasyABC:::.sample_prior(prior, prior_test)
-        }
-        for(i in 1:n_end){
-          #} else {
-          #  for (j in 1:l) {
-          #    param[j] = as.numeric(prior[[j]]$sampleArgs[2]) + (as.numeric(prior[[j]]$sampleArgs[3]) - 
-          #      as.numeric(prior[[j]]$sampleArgs[2])) * random_tab[((irun - 
-          #      1) * 100 * n_cluster + i), j]
-          #  }
-          #}
-          # if (use_seed) # NB: we force the value use_seed=TRUE
-          param = c((seed_count + i), params[[i]])
-          list_param[[i]] = param
-          tab_param[tab_param_index,] = param[2:(l + 1)]
-          tab_param_index <- tab_param_index + 1
-        }
-        seed_count = seed_count + (n_cluster * 100)
-        list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
-        for (i in 1:n_end) {
-          tab_simul_summarystat[tab_simul_index,] = as.numeric(list_simul_summarystat[[i]])
-          tab_simul_index <- tab_simul_index + 1
-        }
-        #stopCluster(cl)
-    } else {
-        #stopCluster(cl)
+    for(i in 1:length(params)){
+        tab_param[i,] = params[[i]]
+        param = c((seed_count + i), params[[i]])
+        list_param[[i]] = param
     }
+    seed_count = seed_count + nb_simul
+    list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
+    for (i in 1:nb_simul)
+        tab_simul_summarystat[i,] = as.numeric(list_simul_summarystat[[i]])
+    
     options(scipen = 0)
     cbind(tab_param, tab_simul_summarystat)
+    
 }
          
 ## function to perform ABC simulations from a non-uniform prior (derived from a
 ## set of particles) 
 .ABC_launcher_not_uniformc_cluster <- function(model, prior, prior_test, param_previous_step, 
     tab_weight, nb_simul, seed_count, inside_prior, n_cluster, max_pick=10000, summary_stat_target, cl, ccores) {
+  
+    l = ncol(param_previous_step)
+  
     tab_simul_summarystat = matrix(nrow = nb_simul, ncol = length(summary_stat_target))
-    tab_simul_index <- 1
-    tab_param = matrix(nrow = nb_simul, ncol = ncol(param_previous_step))
-    tab_param_index <- 1
+    tab_param = matrix(nrow = nb_simul, ncol = l)
     k_acc = 0
-    #cl <- makeCluster(getOption("cl.cores", n_cluster))
+  
     list_param = list(NULL)
-    npar = floor(nb_simul/(100 * n_cluster))
-    n_end = nb_simul - (npar * 100 * n_cluster)
-    if (npar > 0) {
-        for (irun in 1:npar) {
-            require("doMC")
-            registerDoMC(ccores[1])
-            params <- foreach (i = 1:(100 * n_cluster)) %dopar% {
-                l = dim(param_previous_step)[2]
-                counter = 0
-                #HERE
-                repeat {
-                  counter = counter + 1
-                  k_acc = k_acc + 1
-                  # pick a particle
-                  param_picked = .particle_pick(param_previous_step, tab_weight)
-                  # move it
-                  # only variable parameters are moved, computation of a WEIGHTED variance
-                  param_moved = .move_particle(as.numeric(param_picked), 2*cov.wt(as.matrix(as.matrix(param_previous_step)),as.vector(tab_weight))$cov)
-                  if(!.is_in_parameter_constraints(param_moved, prior_test))
-                    next
-                  else if ((!inside_prior) || (.is_included(param_moved, prior)) || (counter >= max_pick)) {
-                    break
-                  }
-                }
-                if (counter == max_pick) {
-                  stop("The proposal jumps outside of the prior distribution too often - consider using the option 'inside_prior=FALSE' or enlarging the prior distribution")
-                }
-                param = param_previous_step[1, ]
-                param = param_moved
-                param = c((seed_count + i), param)
-                param
-            }
-            
-            for(i in 1:length(params)){
-              param <- params[[i]]
-              list_param[[i]] = param
-              tab_param[tab_param_index,] <- param[2:(l + 1)]
-              tab_param_index <- tab_param_index + 1
-            }
-            
-            seed_count = seed_count + n_cluster * 100
-            list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
-            for (i in 1:(100 * n_cluster)) {
-                tab_simul_summarystat[tab_simul_index,] = as.numeric(list_simul_summarystat[[i]])
-                tab_simul_index <- tab_simul_index + 1
-            }
+    
+    require("doMC")
+    registerDoMC(ccores[1])
+
+    params <- foreach (i = 1:nb_simul) %dopar% {
+        counter = 0
+        repeat {
+          counter = counter + 1
+          # pick a particle
+          param_picked = .particle_pick(param_previous_step, tab_weight)
+          # move it
+          # only variable parameters are moved, computation of a WEIGHTED variance
+          param_moved = .move_particle(as.numeric(param_picked), 2*cov.wt(as.matrix(as.matrix(param_previous_step)),as.vector(tab_weight))$cov)
+          if(!.is_in_parameter_constraints(param_moved, prior_test)) # Check whether it fullfills the prior_test
+            next
+          else if ((!inside_prior) || (.is_included(param_moved, prior)) || (counter >= max_pick)) {
+            break
+          }
         }
+        if (counter == max_pick) {
+          stop("The proposal jumps outside of the prior distribution too often - consider using the option 'inside_prior=FALSE' or enlarging the prior distribution")
+        }
+
+        list(param_moved, counter)
     }
-    if (n_end > 0) {
-        # stopCluster(cl) cl <- makeCluster(getOption('cl.cores', 1))
-        list_param = list(NULL)
-        require("doMC")
-        registerDoMC(ccores[1])
-        params <- foreach (i = 1:n_end) %dopar% {
-            l = dim(param_previous_step)[2]
-            counter = 0
-            repeat {
-                k_acc = k_acc + 1
-                counter = counter + 1
-                # pick a particle
-                param_picked = .particle_pick(param_previous_step, tab_weight)
-                # move it
-                param_moved = .move_particle(as.numeric(param_picked), 2 * cov.wt(as.matrix(as.matrix(param_previous_step)), 
-                    as.vector(tab_weight))$cov)  # only variable parameters are moved, computation of a WEIGHTED variance
-                if(!.is_in_parameter_constraints(param_moved, prior_test))
-                  next
-                else if ((!inside_prior) || (.is_included(param_moved, prior)) || (counter >= max_pick)) {
-                  break
-                }
-            }
-            if (counter == max_pick) {
-                stop("The proposal jumps outside of the prior distribution too often - consider using the option 'inside_prior=FALSE' or enlarging the prior distribution")
-            }
-            param = param_previous_step[1, ]
-            param = param_moved
-            param = c((seed_count + i), param)
-            param
-        }
-        
-        for(i in 1:length(params)){
-          param <- params[[i]]
-          list_param[[i]] = param
-          tab_param[tab_param_index,] <- param[2:(l + 1)]
-          tab_param_index <- tab_param_index + 1
-        }
-        seed_count = seed_count + n_end
-        list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
-        for (i in 1:n_end) {
-          tab_simul_summarystat[tab_simul_index,] = as.numeric(list_simul_summarystat[[i]])
-          tab_simul_index <- tab_simul_index + 1
-        }
+    
+    for(i in 1:length(params)){
+      param <- params[[i]][[1]]
+      tab_param[i,] <- param
+      k_acc <- k_acc + params[[i]][[2]]
+      
+      list_param[[i]] = c(seed_count + i, param)
     }
-    #stopCluster(cl)
+    
+    seed_count = seed_count + nb_simul
+    list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
+    for (i in 1:nb_simul)
+        tab_simul_summarystat[i,] = as.numeric(list_simul_summarystat[[i]])
+    
     list(cbind(tab_param, tab_simul_summarystat), nb_simul/k_acc)
 }
 
@@ -4472,9 +4369,10 @@
 }
 
 ## sequential algorithm of Lenormand et al. 2012
-.ABC_Lenormand_cluster <- function(model, prior, prior_test, nb_simul, summary_stat_target, 
-    n_cluster, verbose, alpha = 0.5, p_acc_min = 0.05, dist_weights=NULL, seed_count = 0, inside_prior = TRUE, 
-    progress_bar = FALSE, max_pick=10000, cl, ccores, ...) {
+.ABC_Lenormand_cluster <- function(model, prior, prior_test, nb_simul, summary_stat_target,
+    n_cluster, verbose, cl, ccores, alpha = 0.5, p_acc_min = 0.05, dist_weights=NULL, seed_count = 0, inside_prior = TRUE, 
+    progress_bar = FALSE, max_pick=10000,  ...) {
+  
     ## checking errors in the inputs
     if (!is.vector(alpha)) 
         stop("'alpha' has to be a number.")
@@ -4514,7 +4412,7 @@
     n_alpha = ceiling(nb_simul * alpha)
     ## step 1 ABC rejection step with LHS
     tab_ini = .ABC_rejection_lhs_cluster(model, prior, prior_test, nb_simul, seed_count, 
-        n_cluster, cl, ccores)
+        n_cluster, summary_stat_target, cl, ccores)
     # initially, weights are equal
     tab_weight = array(1, n_alpha)
     if (verbose == TRUE) {
@@ -4669,7 +4567,7 @@
         prior, nb_simul, summary_stat_target, n_cluster, verbose, dist_weights=dist_weights, ...), Delmoral = .ABC_Delmoral_cluster(model, 
         prior, prior_test, nb_simul, summary_stat_target, n_cluster, verbose, dist_weights=dist_weights, ...), 
         Lenormand = .ABC_Lenormand_cluster(model, prior, prior_test, nb_simul, summary_stat_target, 
-            n_cluster, verbose, dist_weights=dist_weights, cl, ccores, ...)))
+            n_cluster, verbose, cl, ccores, ...)))
     options(scipen = 0)
 }
 
