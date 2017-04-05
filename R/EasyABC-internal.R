@@ -199,7 +199,7 @@
     m = gregexpr("[xX]([0-9])+", prior_test)
     result = regmatches(prior_test, m)
     for (i in 1:length(result[[1]])) {
-        parameter_index = substring(result[[1]][i], 2)
+        parameter_index = as.numeric(substring(result[[1]][i], 2))
         if (parameter_index > nb_parameters) {
             stop(paste("Parameter out of range: ", result[[1]][i], sep = ""))
         }
