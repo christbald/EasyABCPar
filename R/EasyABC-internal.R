@@ -106,14 +106,15 @@
             simul <- matrix(simul, 1, length(simul))
         }
     }
-    if (!is.null(dist_weights)) {
-        simul = simul * (dist_weights/sum(dist_weights))
-    }
     vartab = sd_simul^2
     # Ensure positivity of variances: the elements of vartab that are close to zero
     # are set to one
     vartab[vartab == 0] = 1
-    colSums((t(simul) - as.vector(summary_stat_target))^2/as.vector(vartab))
+    if (!is.null(dist_weights)) {
+      return(colSums(((t(simul) - as.vector(summary_stat_target))^2/as.vector(vartab)) * dist_weights))
+    } else {
+      return(colSums((t(simul) - as.vector(summary_stat_target))^2/as.vector(vartab)))
+    }
 }
 
 ## function to select the simulations that are at a distance smaller than tol from
@@ -4434,9 +4435,7 @@
     simul_below_tol = simul_below_tol[1:n_alpha, ]  # to be sure that there are not two or more simulations at a distance equal to the tolerance determined by the quantile
     tab_dist = .compute_dist(summary_stat_target, as.matrix(as.matrix(simul_below_tol)[,
         (nparam + 1):(nparam + nstat)]), sd_simul, dist_weights=dist_weights)
-    if (!is.null(dist_weights)) {
-        tab_dist = tab_dist * (dist_weights/sum(dist_weights))
-    }
+    
     tol_next = max(tab_dist)
     intermediary_steps = list(NULL)
     if (verbose == TRUE) {
@@ -4485,9 +4484,7 @@
         tab_weight = c(tab_weight, tab_weight2)
         tab_dist2 = .compute_dist(summary_stat_target, as.matrix(as.matrix(tab_ini)[,
             (nparam + 1):(nparam + nstat)]), sd_simul, dist_weights=dist_weights)
-        if (!is.null(dist_weights)) {
-            tab_dist2 = tab_dist2 * (dist_weights/sum(dist_weights))
-        }
+
         p_acc = length(tab_dist2[!is.na(tab_dist2) & tab_dist2 <= tol_next])/nb_simul_step
         tab_dist = c(tab_dist, tab_dist2)
         tol_next = sort(tab_dist)[n_alpha]
