@@ -4567,7 +4567,7 @@
         prior, nb_simul, summary_stat_target, n_cluster, verbose, dist_weights=dist_weights, ...), Delmoral = .ABC_Delmoral_cluster(model,
         prior, prior_test, nb_simul, summary_stat_target, n_cluster, verbose, dist_weights=dist_weights, ...),
         Lenormand = .ABC_Lenormand_cluster(model, prior, prior_test, nb_simul, summary_stat_target,
-            n_cluster, verbose, cl, ccores, ...)))
+            n_cluster, verbose, cl, ccores, dist_weights = dist_weights, ...)))
     options(scipen = 0)
 }
 
