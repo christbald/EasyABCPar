@@ -2923,7 +2923,7 @@
               paramtemp[i,] = param[2:(l + 1)]
             }
             seed_count = seed_count + 100 * n_cluster
-            list_simul_summarystat = mch::mch(cl = cl, params = list_param, func = model, cores = ccores)
+            list_simul_summarystat = mch::mch(cl = cl, mchParams = list_param, func = model, cores = ccores)
 
             for (i in 1:(100 * n_cluster)) {
               #NEW
@@ -2957,7 +2957,7 @@
           paramtemp[i,] = param[2:(l + 1)]
         }
         seed_count = seed_count + n_end
-        list_simul_summarystat = mch::mch(cl = cl, params = list_param, func = model, cores = ccores)
+        list_simul_summarystat = mch::mch(cl = cl, mchParams = list_param, func = model, cores = ccores)
 
         for (i in 1:n_end) {
           #NEW
@@ -4199,7 +4199,7 @@
         list_param[[i]] = param
     }
     seed_count = seed_count + nb_simul
-    list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
+    list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, mchParams = list_param)
     for (i in 1:nb_simul)
         tab_simul_summarystat[i,] = as.numeric(list_simul_summarystat[[i]])
 
@@ -4255,7 +4255,7 @@
     }
 
     seed_count = seed_count + nb_simul
-    list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, params = list_param)
+    list_simul_summarystat = mch::mch(cl = cl, cores = ccores, func = model, mchParams = list_param)
     for (i in 1:nb_simul)
         tab_simul_summarystat[i,] = as.numeric(list_simul_summarystat[[i]])
 
